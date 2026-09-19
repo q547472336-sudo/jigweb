@@ -495,6 +495,75 @@ button.save-status:hover { background: var(--danger-subtle); }
   bottom: 18px;
 }
 
+/* Compact, icon-first controls for the immersive puzzle view. */
+.game-shell { position: relative; }
+.game-header {
+  height: 48px;
+  grid-template-columns: 32px minmax(150px, 1fr) minmax(220px, 360px) auto auto auto;
+  gap: 10px;
+  padding: 6px 14px;
+  transition: transform 180ms ease, opacity 140ms ease;
+}
+.game-header .icon-button,
+.game-header .game-action {
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  gap: 0;
+  border-radius: 9px;
+}
+.game-header .icon-button svg,
+.game-header .game-action svg { width: 18px; height: 18px; }
+.game-workspace { height: calc(100dvh - 48px); }
+.game-workspace.has-keyboard-help { height: calc(100dvh - 84px); }
+.game-shell.is-playing .game-header {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 50;
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+.game-header-reveal { display: none; }
+.game-shell.is-playing .game-header-reveal {
+  position: fixed;
+  z-index: 55;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: block;
+  height: 16px;
+}
+.game-shell.is-playing:has(.game-header-reveal:hover) .game-header,
+.game-shell.is-playing:has(.game-header:hover) .game-header,
+.game-shell.is-playing:has(.game-header:focus-within) .game-header {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+.game-shell.is-dragging .game-header-reveal { display: none !important; }
+.game-shell.is-dragging:not(.is-playing) .game-header {
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+.game-shell.is-dragging:not(.is-playing) .game-workspace { height: calc(100dvh - 48px); }
+.game-shell.is-playing .game-workspace { height: 100dvh; }
+.game-dock { gap: 2px; padding: 3px; border-radius: 10px; }
+.game-dock button {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 7px;
+}
+.game-dock button svg { width: 17px; height: 17px; }
+
+@media (max-width: 640px) {
+  .game-header { grid-template-columns: 32px minmax(0, 1fr) auto auto; gap: 7px; padding-inline: 10px; }
+  .game-header .game-progress, .game-header .save-status { display: none; }
+  .game-dock { bottom: 12px; }
+}
+
 /* M3/M4 play surfaces */
 .challenge-page, .leaderboard-page, .room-shell { min-height: 100dvh; padding: 28px clamp(20px, 5vw, 80px) 64px; background: #f4f7fb; }
 .challenge-header, .simple-page-header, .room-header { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; align-items: center; gap: 16px; max-width: 1180px; margin: 0 auto; }

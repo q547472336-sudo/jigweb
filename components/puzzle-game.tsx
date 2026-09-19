@@ -13,7 +13,6 @@ import {
   CloudCheck,
   Eye,
   FrameCorners,
-  Lightbulb,
   Pause,
   Play,
   WarningCircle,
@@ -144,9 +143,9 @@ export function PuzzleGame({ puzzle }: { puzzle: PuzzleSummary }) {
   const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([]);
   const [edgesOnly, setEdgesOnly] = useState(false);
   const [ghost, setGhost] = useState(false);
-  const [hintIndex, setHintIndex] = useState<number | null>(null);
   const [referenceOpen, setReferenceOpen] = useState(false);
   const [referencePosition, setReferencePosition] = useState({ x: 0, y: 0 });
+  const [immersive, setImmersive] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [dragVisual, setDragVisual] = useState<DragVisual | null>(null);
   const [draggingActive, setDraggingActive] = useState(false);
@@ -172,7 +171,6 @@ export function PuzzleGame({ puzzle }: { puzzle: PuzzleSummary }) {
   const pendingCloud = useRef<{ pieces: PositionedPiece[]; status: PersistedStatus } | undefined>(undefined);
   const cloudTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cloudSyncing = useRef(false);
-  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const magneticTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioContext = useRef<AudioContext | null>(null);
   const snapTargetRef = useRef<number | null>(null);
@@ -412,12 +410,13 @@ export function PuzzleGame({ puzzle }: { puzzle: PuzzleSummary }) {
 
   useEffect(() => () => {
     if (cloudTimer.current) clearTimeout(cloudTimer.current);
-    if (hintTimer.current) clearTimeout(hintTimer.current);
     if (magneticTimer.current) clearTimeout(magneticTimer.current);
   }, []);
 
   useEffect(() => {
     if (status === "paused") pauseContinueRef.current?.focus();
+    if (status === "active" && !dragRef.current) setImmersive(true);
+    if (status !== "active") setImmersive(false);
   }, [status]);
 
   useEffect(() => {
@@ -505,6 +504,7 @@ export function PuzzleGame({ puzzle }: { puzzle: PuzzleSummary }) {
       if (!drag || drag.pointerId !== event.pointerId) return;
       if (event.type !== "pointercancel") updateDragPosition(drag, event.clientX, event.clientY);
       dragRef.current = null;
+      if (event.type !== "pointercancel" && drag.started && statusRef.current === "active") setImmersive(true);
       if (drag.rafId !== null) window.cancelAnimationFrame(drag.rafId);
       clearDragElementsTransform(drag);
       setDraggingActive(false);
@@ -830,18 +830,6 @@ export function PuzzleGame({ puzzle }: { puzzle: PuzzleSummary }) {
     }
   }, [applyPieces, conflict, getBoardMetrics, getWorkspaceMetrics, keyboardGrab, markMagneticSnap, persist, playSnapSound, puzzle.columns, puzzle.rows, status]);
 
-  function showHint() {
-    const piece = pieces.find((item) => item.id === selected && !item.fixed);
-    if (!piece) {
-      setAnnouncement("请先选择一片未固定的碎片");
-      return;
-    }
-    if (hintTimer.current) clearTimeout(hintTimer.current);
-    setHintIndex(piece.index);
-    setAnnouncement(`已高亮碎片 ${piece.index + 1} 的目标位置 3 秒`);
-    hintTimer.current = setTimeout(() => setHintIndex(null), 3000);
-  }
-
   function organizePieces() {
     if (status === "paused" || status === "completed") return;
     const next = reflowLoosePieces("arranged");
@@ -923,19 +911,20 @@ export function PuzzleGame({ puzzle }: { puzzle: PuzzleSummary }) {
       : [],
   ), [edgesOnly, magneticallyJoinedIds, puzzle.columns, puzzle.rows, workspacePieces]);
   const keyboardPiece = keyboardGrab ? pieces.find((piece) => piece.id === keyboardGrab.pieceId) : undefined;
-  const targetSlots = useMemo(() => Array.from({ length: pieces.length }, (_, slot) => <span key={slot} className={hintIndex === slot ? "hint" : ""} />), [hintIndex, pieces.length]);
+  const targetSlots = useMemo(() => Array.from({ length: pieces.length }, (_, slot) => <span key={slot} />), [pieces.length]);
 
-  return <main className="game-shell">
+  return <main className={`game-shell ${immersive ? "is-playing" : ""} ${draggingActive ? "is-dragging" : ""}`}>
+    <div className="game-header-reveal" aria-hidden="true" />
     <header className="game-header">
       <Link href="/" className="icon-button" aria-label="返回发现"><ArrowLeft /></Link>
       <div className="game-title"><h1>{puzzle.title}</h1><span>{puzzle.pieceCount} 片</span></div>
       <div className="game-progress" aria-label={`拼图进度 ${progress}%`}><span><i style={{ width: `${progress}%` }} /></span><b>{progress}%</b></div>
       <SaveStatus state={saveState} onRetry={status === "active" || status === "paused" ? () => void persist(piecesRef.current, statusRef.current === "paused" ? "paused" : "active", true) : undefined} />
-      <button className="button secondary game-pause" disabled={status === "loading" || status === "ready" || status === "completed"} onClick={() => {
+      <button className="button secondary game-action game-pause" aria-label={status === "paused" ? "继续拼图" : "暂停拼图"} title={status === "paused" ? "继续拼图" : "暂停拼图"} disabled={status === "loading" || status === "ready" || status === "completed"} onClick={() => {
         if (status === "paused") { setStatus("active"); statusRef.current = "active"; void persist(pieces, "active", true); }
         else { setStatus("paused"); statusRef.current = "paused"; void persist(pieces, "paused", true); }
-      }}>{status === "paused" ? <Play /> : <Pause />}{status === "paused" ? "继续" : "暂停"}</button>
-      {puzzle.visibility === "public" ? <button className="button primary game-room" onClick={() => void createRoom()}><UsersThree /><span>一起拼吧</span></button> : null}
+      }}>{status === "paused" ? <Play /> : <Pause />}</button>
+      {puzzle.visibility === "public" ? <button className="button primary game-action game-room" aria-label="一起拼吧" title="一起拼吧" onClick={() => void createRoom()}><UsersThree /></button> : null}
     </header>
 
     {keyboardGrab ? <div className="keyboard-help">方向键移动 1/10 格，Shift + 方向键移动一格，Enter 放下，Esc 取消</div> : null}
@@ -996,11 +985,10 @@ export function PuzzleGame({ puzzle }: { puzzle: PuzzleSummary }) {
       </div> : <button className="reference-restore button secondary" onClick={() => setReferenceOpen(true)}><Eye />显示原图</button>}
 
       <div className="game-dock" role="toolbar" aria-label="拼图工具">
-        <button title="将主图区外的未固定碎片整理在主图四周" onClick={organizePieces}><ArrowsClockwise /><span>整理</span></button>
-        <button title="将未固定碎片复位到主图外" onClick={resetUnfixedPieces}><ArrowCounterClockwise /><span>复位</span></button>
-        <button title="高亮边缘碎片" aria-pressed={edgesOnly} className={edgesOnly ? "active" : ""} onClick={() => setEdgesOnly((value) => !value)}><FrameCorners /><span>边框</span></button>
-        <button title="高亮所选碎片目标 3 秒" onClick={showHint}><Lightbulb /><span>提示</span></button>
-        <button title="显示或隐藏底版" aria-pressed={ghost} className={ghost ? "active" : ""} onClick={() => setGhost((value) => !value)}><Eye /><span>底版</span></button>
+        <button aria-label="整理碎片" title="整理碎片" onClick={organizePieces}><ArrowsClockwise /></button>
+        <button aria-label="高亮边框碎片" title="高亮边框碎片" aria-pressed={edgesOnly} className={edgesOnly ? "active" : ""} onClick={() => setEdgesOnly((value) => !value)}><FrameCorners /></button>
+        <button aria-label="复位碎片" title="复位碎片" onClick={resetUnfixedPieces}><ArrowCounterClockwise /></button>
+        <button aria-label="显示或隐藏底板" title="显示或隐藏底板" aria-pressed={ghost} className={ghost ? "active" : ""} onClick={() => setGhost((value) => !value)}><Eye /></button>
       </div>
     </section>
 

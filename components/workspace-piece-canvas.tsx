@@ -26,6 +26,7 @@ type WorkspacePieceCanvasProps = {
 
 type CanvasGeometry = { width: number; height: number; pixelRatio: number; pieceWidth: number; pieceHeight: number };
 type DragPaint = { pieceIds: Set<string>; x: number; y: number };
+type DragBounds = { left: number; top: number; right: number; bottom: number };
 
 const EMPTY_DRAG: DragPaint = { pieceIds: new Set(), x: 0, y: 0 };
 
@@ -51,6 +52,7 @@ export const WorkspacePieceCanvas = forwardRef<WorkspacePieceCanvasHandle, Works
   const imageRef = useRef<HTMLImageElement | null>(null);
   const geometryRef = useRef<CanvasGeometry>({ width: 0, height: 0, pixelRatio: 1, pieceWidth: 44, pieceHeight: 44 });
   const dragRef = useRef<DragPaint>(EMPTY_DRAG);
+  const dragBoundsRef = useRef<DragBounds | null>(null);
   const pathCache = useRef(new Map<string, Path2D>());
   const propsRef = useRef(props);
   const piecesByIdRef = useRef(new Map(props.pieces.map((piece) => [piece.id, piece])));
@@ -133,21 +135,60 @@ export const WorkspacePieceCanvas = forwardRef<WorkspacePieceCanvasHandle, Works
     });
   }, [clear, drawPiece]);
 
+  const getDragBounds = useCallback((): DragBounds | null => {
+    const geometry = geometryRef.current;
+    const drag = dragRef.current;
+    if (!drag.pieceIds.size) return null;
+    const padding = Math.max(12, Math.max(geometry.pieceWidth, geometry.pieceHeight) * .2);
+    let left = Infinity; let top = Infinity; let right = -Infinity; let bottom = -Infinity;
+    drag.pieceIds.forEach((pieceId) => {
+      const piece = piecesByIdRef.current.get(pieceId);
+      if (!piece) return;
+      const x = (piece.x ?? 0) * geometry.width + drag.x;
+      const y = (piece.y ?? 0) * geometry.height + drag.y;
+      left = Math.min(left, x - padding);
+      top = Math.min(top, y - padding);
+      right = Math.max(right, x + geometry.pieceWidth + padding);
+      bottom = Math.max(bottom, y + geometry.pieceHeight + padding);
+    });
+    return Number.isFinite(left) ? { left, top, right, bottom } : null;
+  }, []);
+
+  const clearDragBounds = useCallback((context: CanvasRenderingContext2D, bounds: DragBounds | null) => {
+    if (!bounds) return;
+    const { pixelRatio } = geometryRef.current;
+    context.save();
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
+    context.restore();
+  }, []);
+
   const drawDrag = useCallback(() => {
     const canvas = dragCanvasRef.current;
     if (!canvas) return;
     const context = canvas.getContext("2d");
     if (!context) return;
     const geometry = geometryRef.current;
-    clear(canvas);
     const drag = dragRef.current;
+    const nextBounds = getDragBounds();
+    const previousBounds = dragBoundsRef.current;
+    const dirtyBounds = previousBounds && nextBounds
+      ? {
+        left: Math.min(previousBounds.left, nextBounds.left),
+        top: Math.min(previousBounds.top, nextBounds.top),
+        right: Math.max(previousBounds.right, nextBounds.right),
+        bottom: Math.max(previousBounds.bottom, nextBounds.bottom),
+      }
+      : previousBounds ?? nextBounds;
+    clearDragBounds(context, dirtyBounds);
+    dragBoundsRef.current = nextBounds;
     if (!drag.pieceIds.size) return;
     drag.pieceIds.forEach((pieceId) => {
       const piece = piecesByIdRef.current.get(pieceId);
       if (!piece) return;
       drawPiece(context, piece, (piece.x ?? 0) * geometry.width + drag.x, (piece.y ?? 0) * geometry.height + drag.y, true);
     });
-  }, [clear, drawPiece]);
+  }, [clearDragBounds, drawPiece, getDragBounds]);
 
   const resizeCanvases = useCallback(() => {
     const surface = surfaceRef.current;
@@ -157,6 +198,7 @@ export const WorkspacePieceCanvas = forwardRef<WorkspacePieceCanvasHandle, Works
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     const size = getPieceSize();
     geometryRef.current = { width, height, pixelRatio, pieceWidth: size.width, pieceHeight: size.height };
+    dragBoundsRef.current = null;
     [baseCanvasRef.current, dragCanvasRef.current].forEach((canvas) => {
       if (!canvas) return;
       canvas.width = Math.round(width * pixelRatio);
@@ -171,6 +213,7 @@ export const WorkspacePieceCanvas = forwardRef<WorkspacePieceCanvasHandle, Works
   useImperativeHandle(ref, () => ({
     clearDrag: () => {
       dragRef.current = EMPTY_DRAG;
+      dragBoundsRef.current = null;
       clear(dragCanvasRef.current);
       drawBase();
     },
