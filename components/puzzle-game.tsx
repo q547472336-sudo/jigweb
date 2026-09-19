@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  ArrowCounterClockwise,
   ArrowsClockwise,
   CheckCircle,
   CloudArrowUp,
@@ -853,6 +854,28 @@ export function PuzzleGame({ puzzle }: { puzzle: PuzzleSummary }) {
     setAnnouncement("未固定碎片已整理在主图四周");
   }
 
+  function resetUnfixedPieces() {
+    if (status === "paused" || status === "completed") return;
+    const metrics = getLooseLayoutMetrics();
+    if (!metrics) return;
+    const cleared = piecesRef.current.map((piece) => piece.fixed ? piece : {
+      ...piece,
+      tray: "left" as const,
+      x: undefined,
+      y: undefined,
+      slot: undefined,
+      fixed: false,
+    });
+    const next = layoutUnfixedPieces(cleared, "arranged", metrics);
+    applyPieces(next);
+    setMagneticallyJoinedIds(new Set());
+    setSelected(null);
+    setSelectedGroupIds([]);
+    setKeyboardGrab(null);
+    if (status === "active") void persist(next, "active");
+    setAnnouncement("未固定碎片已复位到主图外");
+  }
+
   async function createRoom() {
     if (!user) { requestLogin(); return; }
     try {
@@ -974,6 +997,7 @@ export function PuzzleGame({ puzzle }: { puzzle: PuzzleSummary }) {
 
       <div className="game-dock" role="toolbar" aria-label="拼图工具">
         <button title="将主图区外的未固定碎片整理在主图四周" onClick={organizePieces}><ArrowsClockwise /><span>整理</span></button>
+        <button title="将未固定碎片复位到主图外" onClick={resetUnfixedPieces}><ArrowCounterClockwise /><span>复位</span></button>
         <button title="高亮边缘碎片" aria-pressed={edgesOnly} className={edgesOnly ? "active" : ""} onClick={() => setEdgesOnly((value) => !value)}><FrameCorners /><span>边框</span></button>
         <button title="高亮所选碎片目标 3 秒" onClick={showHint}><Lightbulb /><span>提示</span></button>
         <button title="显示或隐藏底版" aria-pressed={ghost} className={ghost ? "active" : ""} onClick={() => setGhost((value) => !value)}><Eye /><span>底版</span></button>

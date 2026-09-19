@@ -220,7 +220,7 @@ button.save-status:hover { background: var(--danger-subtle); }
 .puzzle-piece { position: relative; touch-action: none; user-select: none; -webkit-user-drag: none; transition: outline-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease; }
 .puzzle-piece:hover:not(.fixed), .puzzle-piece:focus-visible:not(.fixed) { border-color: #bfd0ff; box-shadow: 0 6px 16px rgba(40,65,105,.2); }
 .puzzle-piece:focus-visible { outline: 3px solid rgba(37,99,235,.3); outline-offset: 2px; }
-.puzzle-piece.dragging-source { opacity: .18; }
+.puzzle-piece.dragging-source { opacity: 0; transition: none; }
 .puzzle-piece.on-board { position: absolute; z-index: 2; margin: 0; border-radius: 4px; }
 .puzzle-piece.on-board:not(.fixed) { z-index: 4; }
 .puzzle-piece.on-board.fixed { position: absolute; z-index: 3; }
