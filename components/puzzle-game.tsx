@@ -956,7 +956,7 @@ export function PuzzleGame({ puzzle }: { puzzle: PuzzleSummary }) {
             style={{
               aspectRatio: String(puzzle.aspectRatio),
               width: puzzle.aspectRatio >= 1 ? "min(64vw, 70vh)" : "auto",
-              height: puzzle.aspectRatio < 1 ? "min(72%, calc(100dvh - 180px))" : "auto",
+              height: puzzle.aspectRatio < 1 ? "min(72dvh, calc(100dvh - 180px))" : "auto",
             }}
             role="grid"
             aria-label={`${puzzle.rows} 行 ${puzzle.columns} 列拼图画布`}

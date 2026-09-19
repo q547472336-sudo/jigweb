@@ -239,7 +239,7 @@ button.save-status:hover { background: var(--danger-subtle); }
 .reference-head > div { display: flex; }
 .reference-head button { display: grid; place-items: center; border-radius: 8px; }
 .reference-head button:hover { color: var(--brand); background: var(--brand-subtle); }
-.reference-image img { display: block; user-select: none; }
+.reference-image img { display: block; height: auto; object-fit: contain; user-select: none; }
 .game-dock button:focus-visible, .reference-head button:focus-visible, .zoom-controls button:focus-visible { outline: 3px solid rgba(37,99,235,.3); outline-offset: 1px; }
 .game-dock button:active { transform: scale(.98); }
 .modal-backdrop { z-index: 60; }
@@ -440,7 +440,7 @@ button.save-status:hover { background: var(--danger-subtle); }
   contain: layout paint;
 }
 .puzzle-board { background: transparent; border: 0; box-shadow: none; }
-.board-underlay { position: absolute; z-index: 0; inset: 0; pointer-events: none; background-position: center; background-size: cover; opacity: .48; }
+.board-underlay { position: absolute; z-index: 0; inset: 0; pointer-events: none; background-position: center; background-size: 100% 100%; opacity: .48; }
 .target-grid { z-index: 1; overflow: visible; pointer-events: none; background: transparent; box-shadow: none; }
 .target-grid > span { border: 0; }
 .target-grid::before {

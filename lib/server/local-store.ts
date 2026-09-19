@@ -4,19 +4,22 @@ import { supabaseConfigFromEnv } from "./data-adapter.ts";
 const now = () => new Date().toISOString();
 const image = "/placeholders/mountain.svg";
 const image2 = "/placeholders/garden.svg";
-const seedPuzzle = (id: string, title: string, category: string, categorySlug: string, imageUrl: string, rows = 6, columns = 6): Puzzle => ({ id, ownerId: null, title, description: `${title} 的一幅拼图`, imageUrl, aspectRatio: 1.5, author: { id: "curated", name: "拼图时光编辑部" }, category, categorySlug, rows, columns, pieceCount: rows * columns, playCount: 120 + Number(id.replace(/\D/g, "") || 1) * 37, visibility: "public", status: "published", createdAt: now(), favoriteBy: new Set() });
+const seedPuzzle = (id: string, title: string, category: string, categorySlug: string, imageUrl: string, rows = 6, columns = 6, aspectRatio = 4 / 3): Puzzle => ({ id, ownerId: null, title, description: `${title} 的一幅拼图`, imageUrl, aspectRatio, author: { id: "curated", name: "拼图时光编辑部" }, category, categorySlug, rows, columns, pieceCount: rows * columns, playCount: 120 + Number(id.replace(/\D/g, "") || 1) * 37, visibility: "public", status: "published", createdAt: now(), favoriteBy: new Set() });
 const seedTitles = ["蓝色时刻", "山谷的风", "午后建筑", "森林漫游", "海边留白", "静物练习", "雨后花园", "沿海公路"];
 const seedImages = [image, image2, "/placeholders/coast.svg", "/placeholders/forest.svg"];
-const cowboyTitles = ["星际牛仔：火星唱片店", "星际牛仔：Bebop Crew", "星际牛仔：香港雨幕"];
-const cowboyImages = ["/cowboy-bebop/spaceport.jpg", "/cowboy-bebop/crew.jpg", "/cowboy-bebop/hong-kong.jpg"];
+const cowboyPuzzles = [
+  { title: "星际牛仔：火星唱片店", imageUrl: "/cowboy-bebop/spaceport.jpg", aspectRatio: 1122 / 1402 },
+  { title: "星际牛仔：Bebop Crew", imageUrl: "/cowboy-bebop/crew.jpg", aspectRatio: 736 / 1308 },
+  { title: "星际牛仔：香港雨幕", imageUrl: "/cowboy-bebop/hong-kong.jpg", aspectRatio: 640 / 687 },
+];
 const seedCategories = [["风景", "landscape"], ["日常", "daily"], ["建筑", "architecture"], ["艺术", "art"]] as const;
 const curatedPuzzles = Array.from({ length: 24 }, (_, index) => {
   const number = index + 1; const [category, slug] = seedCategories[index % seedCategories.length]; const size = [3, 4, 6, 8, 11, 14][index % 6];
-  const isCowboyBanner = index < cowboyImages.length;
-  const title = isCowboyBanner ? cowboyTitles[index] : `${seedTitles[index % seedTitles.length]}${index >= seedTitles.length ? ` ${Math.floor(index / seedTitles.length) + 1}` : ""}`;
-  const imageUrl = isCowboyBanner ? cowboyImages[index] : seedImages[index % seedImages.length];
-  const gridSize = isCowboyBanner ? 14 : size;
-  return [`puzzle-${number}`, seedPuzzle(`puzzle-${number}`, title, category, slug, imageUrl, gridSize, gridSize)] as const;
+  const cowboy = cowboyPuzzles[index];
+  const title = cowboy?.title ?? `${seedTitles[index % seedTitles.length]}${index >= seedTitles.length ? ` ${Math.floor(index / seedTitles.length) + 1}` : ""}`;
+  const imageUrl = cowboy?.imageUrl ?? seedImages[index % seedImages.length];
+  const gridSize = cowboy ? 14 : size;
+  return [`puzzle-${number}`, seedPuzzle(`puzzle-${number}`, title, category, slug, imageUrl, gridSize, gridSize, cowboy?.aspectRatio)] as const;
 });
 
 export const store = {
