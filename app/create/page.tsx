@@ -1,23 +1,57 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useMemo, useRef, useState } from "react";
 import { ImageSquare, UploadSimple } from "@phosphor-icons/react";
 import { SiteHeader } from "@/components/site-header";
 import { useApp } from "@/components/app-provider";
 import { apiRequest } from "@/lib/client/api";
 
-const ratios = { "1:1": 1, "4:3": 4 / 3, "3:4": 3 / 4, "16:9": 16 / 9, "9:16": 9 / 16 };
+const ratios = { "1:1": 1, "4:3": 4 / 3, "16:9": 16 / 9 };
 const presets = [[3, 3], [4, 4], [6, 6], [8, 8], [11, 11], [14, 14]];
 
-async function cropForGame(source: string, sourceWidth: number, sourceHeight: number, targetRatio: number, mimeType: string) {
+type CropOffset = { x: number; y: number };
+type CropFrameSize = { width: number; height: number };
+
+function cropDimensions(sourceWidth: number, sourceHeight: number, targetRatio: number, zoom: number) {
   const sourceRatio = sourceWidth / sourceHeight;
-  const cropWidth = sourceRatio > targetRatio ? sourceHeight * targetRatio : sourceWidth;
-  const cropHeight = sourceRatio > targetRatio ? sourceHeight : sourceWidth / targetRatio;
+  const baseWidth = sourceRatio > targetRatio ? sourceHeight * targetRatio : sourceWidth;
+  const baseHeight = sourceRatio > targetRatio ? sourceHeight : sourceWidth / targetRatio;
+  return { width: baseWidth / zoom, height: baseHeight / zoom };
+}
+
+function cropOffsetBounds(sourceWidth: number, sourceHeight: number, targetRatio: number, zoom: number, frame: CropFrameSize) {
+  const sourceRatio = sourceWidth / sourceHeight;
+  const baseWidth = sourceRatio > targetRatio ? frame.height * sourceRatio : frame.width;
+  const baseHeight = sourceRatio > targetRatio ? frame.height : frame.width / sourceRatio;
+  return {
+    x: Math.max(0, (baseWidth * zoom - frame.width) / 2),
+    y: Math.max(0, (baseHeight * zoom - frame.height) / 2),
+  };
+}
+
+function clampCropOffset(offset: CropOffset, sourceWidth: number, sourceHeight: number, targetRatio: number, zoom: number, frame: CropFrameSize) {
+  const bounds = cropOffsetBounds(sourceWidth, sourceHeight, targetRatio, zoom, frame);
+  return {
+    x: Math.max(-bounds.x, Math.min(bounds.x, offset.x)),
+    y: Math.max(-bounds.y, Math.min(bounds.y, offset.y)),
+  };
+}
+
+async function cropForGame(source: string, sourceWidth: number, sourceHeight: number, targetRatio: number, mimeType: string, zoom: number, offset: CropOffset, frame: CropFrameSize) {
+  const crop = cropDimensions(sourceWidth, sourceHeight, targetRatio, zoom);
+  const baseCrop = cropDimensions(sourceWidth, sourceHeight, targetRatio, 1);
+  const frameScale = frame.width / baseCrop.width;
+  const centerX = sourceWidth / 2 - offset.x / (frameScale * zoom);
+  const centerY = sourceHeight / 2 - offset.y / (frameScale * zoom);
+  const cropWidth = crop.width;
+  const cropHeight = crop.height;
+  const left = Math.max(0, Math.min(sourceWidth - cropWidth, centerX - cropWidth / 2));
+  const top = Math.max(0, Math.min(sourceHeight - cropHeight, centerY - cropHeight / 2));
   if (Math.min(cropWidth, cropHeight) < 300) throw new Error("当前比例的裁剪区域短边不足 300px，请选择其他图片或比例");
-  const scale = Math.min(1, 2048 / Math.max(cropWidth, cropHeight));
-  const canvas = document.createElement("canvas"); canvas.width = Math.round(cropWidth * scale); canvas.height = Math.round(cropHeight * scale);
+  const outputScale = Math.min(1, 2048 / Math.max(cropWidth, cropHeight));
+  const canvas = document.createElement("canvas"); canvas.width = Math.round(cropWidth * outputScale); canvas.height = Math.round(cropHeight * outputScale);
   const bitmap = await new Promise<HTMLImageElement>((resolve, reject) => { const value = new window.Image(); value.onload = () => resolve(value); value.onerror = reject; value.src = source; });
-  canvas.getContext("2d")?.drawImage(bitmap, (sourceWidth - cropWidth) / 2, (sourceHeight - cropHeight) / 2, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
+  canvas.getContext("2d")?.drawImage(bitmap, left, top, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
   return canvas.toDataURL(mimeType === "image/png" ? "image/png" : "image/jpeg", 0.9);
 }
 
@@ -36,9 +70,48 @@ export default function CreatePage() {
   const [createdId, setCreatedId] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const cropFrameRef = useRef<HTMLDivElement>(null);
+  const cropDragRef = useRef<{ pointerId: number; startX: number; startY: number; offset: CropOffset } | undefined>(undefined);
+  const [cropZoom, setCropZoom] = useState(1);
+  const [cropOffset, setCropOffset] = useState<CropOffset>({ x: 0, y: 0 });
   const count = rows * columns;
   const valid = Boolean(image && title.trim() && rows >= 3 && columns >= 3 && rows <= 25 && columns <= 25 && count <= 500);
   const grid = useMemo(() => Array.from({ length: Math.min(count, 196) }), [count]);
+
+  function getCropFrameSize(targetRatio = ratios[ratio]): CropFrameSize {
+    const frame = cropFrameRef.current;
+    if (frame && frame.clientWidth > 0 && frame.clientHeight > 0) return { width: frame.clientWidth, height: frame.clientHeight };
+    const width = 720;
+    return { width, height: width / targetRatio };
+  }
+
+  function resetCrop() {
+    setCropZoom(1);
+    setCropOffset({ x: 0, y: 0 });
+  }
+
+  function chooseRatio(nextRatio: keyof typeof ratios) {
+    setRatio(nextRatio);
+    resetCrop();
+  }
+
+  function beginCropDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0 || !fileMeta) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    cropDragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, offset: cropOffset };
+  }
+
+  function moveCropDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = cropDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !fileMeta) return;
+    const frame = getCropFrameSize();
+    setCropOffset(clampCropOffset({ x: drag.offset.x + event.clientX - drag.startX, y: drag.offset.y + event.clientY - drag.startY }, fileMeta.width, fileMeta.height, ratios[ratio], cropZoom, frame));
+  }
+
+  function endCropDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (cropDragRef.current?.pointerId === event.pointerId) cropDragRef.current = undefined;
+  }
 
   async function chooseFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]; if (!file) return;
@@ -47,14 +120,16 @@ export default function CreatePage() {
     const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); });
     const dimensions = await new Promise<{ width: number; height: number }>((resolve, reject) => { const preview = new window.Image(); preview.onload = () => resolve({ width: preview.naturalWidth, height: preview.naturalHeight }); preview.onerror = reject; preview.src = dataUrl; });
     if (dimensions.width < 300 || dimensions.height < 300 || dimensions.width * dimensions.height > 20_000_000) { setError("图片宽高需至少 300px，且不能超过 2000 万像素"); return; }
-    setImage(dataUrl); setFileMeta({ mimeType: file.type, bytes: file.size, ...dimensions });
+    setImage(dataUrl); setFileMeta({ mimeType: file.type, bytes: file.size, ...dimensions }); resetCrop();
   }
 
   async function createPuzzle(event: React.FormEvent) {
     event.preventDefault(); if (!valid || !user || !fileMeta || !image) return;
     setBusy(true); setError("");
     try {
-      const croppedImage = await cropForGame(image, fileMeta.width, fileMeta.height, ratios[ratio], fileMeta.mimeType);
+      const frame = getCropFrameSize();
+      const offset = clampCropOffset(cropOffset, fileMeta.width, fileMeta.height, ratios[ratio], cropZoom, frame);
+      const croppedImage = await cropForGame(image, fileMeta.width, fileMeta.height, ratios[ratio], fileMeta.mimeType, cropZoom, offset, frame);
       const upload = await apiRequest<{ uploadToken: string }>("/uploads/sign", { method: "POST", body: JSON.stringify(fileMeta) }, user.id);
       const result = await apiRequest<{ puzzle: { id: string } }>("/puzzles", { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ title, description, category, categorySlug: "other", rows, columns, shape, visibility, mimeType: fileMeta.mimeType, bytes: fileMeta.bytes, width: fileMeta.width, height: fileMeta.height, aspectRatio: ratios[ratio], cropRatio: ratio, uploadToken: upload.uploadToken, previewUrl: croppedImage }) }, user.id);
       setCreatedId(result.puzzle.id);
@@ -64,12 +139,12 @@ export default function CreatePage() {
 
   return <><SiteHeader /><main className="shell create-page"><header className="page-heading"><div><p className="eyebrow">单页完成</p><h1>创建你的拼图</h1><p>上传图片、调整构图并即时预览。</p></div></header>{!user ? <section className="login-gate"><ImageSquare size={42} /><h2>登录后开始创建</h2><p>作品和原图会安全保存在你的账号中。</p><button className="button primary" onClick={() => requestLogin()}>邮箱登录</button></section> : <div className="create-layout"><form className="creation-form" onSubmit={createPuzzle}>
     <FormSection title="1. 图片"><label className="upload-field"><UploadSimple size={28} /><b>{image ? "更换图片" : "选择或拖入图片"}</b><span>JPEG、PNG、静态 WebP，最大 10MB</span><input type="file" accept="image/jpeg,image/png,image/webp" onChange={chooseFile} /></label></FormSection>
-    <FormSection title="2. 构图比例"><div className="segmented">{Object.keys(ratios).map((value) => <button type="button" className={ratio === value ? "active" : ""} onClick={() => setRatio(value as keyof typeof ratios)} key={value}>{value}</button>)}</div></FormSection>
+    <FormSection title="2. 构图比例与取景"><div className="segmented">{Object.keys(ratios).map((value) => <button type="button" className={ratio === value ? "active" : ""} onClick={() => chooseRatio(value as keyof typeof ratios)} key={value}>{value}</button>)}</div><p className="crop-help">先确定画幅比例，再拖动图片选择框内画面。</p></FormSection>
     <FormSection title="3. 作品信息"><label className="field"><span>名称</span><input value={title} maxLength={60} onChange={(event) => setTitle(event.target.value)} placeholder="给这幅拼图起个名字" /></label><label className="field"><span>描述</span><textarea value={description} maxLength={500} onChange={(event) => setDescription(event.target.value)} placeholder="补充一点关于这幅图的故事" /></label><label className="field"><span>分类</span><select value={category} onChange={(event) => setCategory(event.target.value)}>{["风景", "艺术", "动物", "插画", "建筑", "日常", "美食", "人物", "节日", "其他"].map((item) => <option key={item}>{item}</option>)}</select></label></FormSection>
     <FormSection title="4. 拼图设置"><div className="preset-grid">{presets.map(([r, c]) => <button type="button" className={rows === r && columns === c ? "active" : ""} onClick={() => { setRows(r); setColumns(c); }} key={`${r}x${c}`}>{r * c}<small>{r} × {c}</small></button>)}</div><div className="custom-size"><label className="field"><span>行</span><input type="number" min={3} max={25} value={rows} onChange={(event) => setRows(Number(event.target.value))} /></label><span>×</span><label className="field"><span>列</span><input type="number" min={3} max={25} value={columns} onChange={(event) => setColumns(Number(event.target.value))} /></label><b>{count} 片</b></div>{count > 500 ? <p className="field-error">最多 500 片</p> : null}<div className="segmented"><button type="button" className={shape === "classic" ? "active" : ""} onClick={() => setShape("classic")}>经典凹凸</button><button type="button" className={shape === "square" ? "active" : ""} onClick={() => setShape("square")}>直边矩形</button></div></FormSection>
     <FormSection title="5. 可见性"><div className="segmented"><button type="button" className={visibility === "private" ? "active" : ""} onClick={() => setVisibility("private")}>仅自己可见</button><button type="button" className={visibility === "public" ? "active" : ""} onClick={() => setVisibility("public")}>公开</button></div></FormSection>
     {error ? <p className="field-error" role="alert">{error}</p> : null}<button className="button primary wide create-submit" disabled={!valid || busy}>{busy ? "正在创建…" : "创建拼图"}</button>
-  </form><aside className="creation-preview"><div className="preview-sticky"><div className="section-title"><h2>实时预览</h2><span>{count} 片</span></div><div className="preview-image" style={{ aspectRatio: ratios[ratio] }}>{image ? <><img src={image} alt="裁剪预览" /><div className="preview-grid" style={{ gridTemplateColumns: `repeat(${columns},1fr)` }}>{grid.map((_, index) => <span key={index} />)}</div></> : <div className="preview-empty"><ImageSquare size={38} /><span>选择图片后显示预览</span></div>}</div><h3>{title || "未命名拼图"}</h3><p>{category} · {shape === "classic" ? "经典凹凸" : "直边矩形"} · {visibility === "private" ? "仅自己可见" : "公开"}</p></div></aside></div>}</main>{createdId ? <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true"><p className="eyebrow">创建成功</p><h2>{title}</h2><p className="muted">作品已保存，可以立即开始或在“我的作品”中找到它。</p><a className="button primary wide" href={`/puzzle/${createdId}`}>开始拼图</a><a className="button ghost wide" href="/me/works">前往我的作品</a></section></div> : null}</>;
+  </form><aside className="creation-preview"><div className="preview-sticky"><div className="section-title"><h2>实时预览</h2><span>{count} 片</span></div><div ref={cropFrameRef} className="preview-image crop-editor" style={{ aspectRatio: ratios[ratio] }} onPointerDown={beginCropDrag} onPointerMove={moveCropDrag} onPointerUp={endCropDrag} onPointerCancel={endCropDrag}>{image ? <><img className="crop-source" src={image} alt="裁剪预览" draggable={false} style={{ transform: `translate3d(${cropOffset.x}px, ${cropOffset.y}px, 0) scale(${cropZoom})` }} /><div className="crop-grid" style={{ gridTemplateColumns: `repeat(${columns},1fr)` }}>{grid.map((_, index) => <span key={index} />)}</div><div className="crop-frame" aria-hidden="true" /></> : <div className="preview-empty"><ImageSquare size={38} /><span>选择图片后显示预览</span></div>}</div>{image ? <div className="crop-controls"><label><span>缩放</span><input type="range" min="1" max="3" step="0.01" value={cropZoom} onChange={(event) => { const nextZoom = Number(event.target.value); const frame = getCropFrameSize(); setCropZoom(nextZoom); if (fileMeta) setCropOffset((current) => clampCropOffset(current, fileMeta.width, fileMeta.height, ratios[ratio], nextZoom, frame)); }} /></label><output>{cropZoom.toFixed(2)}×</output><button type="button" className="button ghost" onClick={resetCrop}>居中</button></div> : null}<p className="crop-caption">拖动图片调整取景框内的画面</p><h3>{title || "未命名拼图"}</h3><p>{category} · {shape === "classic" ? "经典凹凸" : "直边矩形"} · {visibility === "private" ? "仅自己可见" : "公开"}</p></div></aside></div>}</main>{createdId ? <div className="modal-backdrop"><section className="modal" role="dialog" aria-modal="true"><p className="eyebrow">创建成功</p><h2>{title}</h2><p className="muted">作品已保存，可以立即开始或在“我的作品”中找到它。</p><a className="button primary wide" href={`/puzzle/${createdId}`}>开始拼图</a><a className="button ghost wide" href="/me/works">前往我的作品</a></section></div> : null}</>;
 }
 
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) { return <section className="form-section"><h2>{title}</h2>{children}</section>; }

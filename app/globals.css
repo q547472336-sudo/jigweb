@@ -512,6 +512,18 @@ button.save-status:hover { background: var(--danger-subtle); }
 .challenge-play-header { position: relative; z-index: 10; height: 64px; display: grid; grid-template-columns: 40px minmax(160px,1fr) auto auto auto auto; align-items: center; gap: 12px; padding: 8px 18px; color: #172033; background: rgba(255,255,255,.96); box-shadow: 0 4px 18px rgba(23,32,51,.12); }
 .challenge-play-header h1 { margin: 3px 0 0; font-size: 17px; }
 .challenge-timer { display: flex; align-items: center; gap: 7px; min-width: 126px; padding: 9px 12px; background: #f1f5f8; border-radius: 10px; font-variant-numeric: tabular-nums; }
+.crop-help, .crop-caption { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.crop-editor { position: relative; overflow: hidden; cursor: grab; touch-action: none; background: #172033; }
+.crop-editor:active { cursor: grabbing; }
+.crop-editor .crop-source { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform-origin: center; user-select: none; pointer-events: none; will-change: transform; }
+.crop-grid { position: absolute; inset: 0; display: grid; pointer-events: none; }
+.crop-grid span { border: 1px solid rgba(255,255,255,.48); }
+.crop-frame { position: absolute; inset: 0; pointer-events: none; border: 2px solid rgba(255,255,255,.9); }
+.crop-controls { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.crop-controls label { display: flex; flex: 1; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+.crop-controls input[type="range"] { flex: 1; accent-color: var(--brand); }
+.crop-controls output { min-width: 44px; color: var(--text); font-size: 12px; font-variant-numeric: tabular-nums; text-align: right; }
+.crop-controls .button { min-height: 32px; padding: 0 10px; font-size: 12px; }
 .challenge-sync { display: flex; align-items: center; gap: 5px; color: #16845b; font-size: 12px; }.challenge-sync.saving { color: #a66b00; }
 .challenge-playfield, .room-board-area { position: relative; min-height: 0; height: calc(100dvh - 64px); overflow: hidden; background: #536d30; touch-action: none; }
 .challenge-target, .room-board { position: absolute; z-index: 2; inset: 0; display: grid; place-items: center; pointer-events: none; }

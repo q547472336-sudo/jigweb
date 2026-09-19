@@ -11,5 +11,10 @@ export function validateCreation(input: Record<string, unknown>) {
   if (imageError === "INVALID_IMAGE_TYPE") return { error: "仅支持 JPEG、PNG 和静态 WebP" };
   if (imageError === "IMAGE_TOO_LARGE") return { error: "图片不能超过 10MB" };
   if (imageError === "IMAGE_DIMENSION_INVALID") return { error: "图片尺寸不符合要求" };
-  return { value: { title, description, rows, columns, mime } };
+  const ratios = { "1:1": 1, "4:3": 4 / 3, "16:9": 16 / 9 } as const;
+  const cropRatio = typeof input.cropRatio === "string" ? input.cropRatio : "";
+  const aspectRatio = Number(input.aspectRatio);
+  const expectedRatio = cropRatio in ratios ? ratios[cropRatio as keyof typeof ratios] : undefined;
+  if (!expectedRatio || !Number.isFinite(aspectRatio) || Math.abs(aspectRatio - expectedRatio) > 0.0001) return { error: "构图比例必须为 1:1、4:3 或 16:9" };
+  return { value: { title, description, rows, columns, mime, aspectRatio, cropRatio } };
 }
