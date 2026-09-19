@@ -6,6 +6,7 @@ import { apiRequest } from "@/lib/client/api";
 
 type AppContextValue = {
   user: CurrentUser | null;
+  authReady: boolean;
   requestLogin: (continuation?: () => void) => void;
   logout: () => void;
   updateUser: (next: CurrentUser) => void;
@@ -19,12 +20,14 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [favorites, setFavorites] = useState(() => new Set<string>());
   const [showLogin, setShowLogin] = useState(false);
   const [continuation, setContinuation] = useState<(() => void) | undefined>();
   useEffect(() => {
     const saved = localStorage.getItem(SESSION_KEY);
     if (saved) try { setUser(JSON.parse(saved) as CurrentUser); } catch { localStorage.removeItem(SESSION_KEY); }
+    setAuthReady(true);
   }, []);
   useEffect(() => {
     if (!user) { setFavorites(new Set()); return; }
@@ -34,6 +37,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [user]);
   const value = useMemo(() => ({
     user,
+    authReady,
     requestLogin(next?: () => void) { setContinuation(() => next); setShowLogin(true); },
     logout() { setUser(null); localStorage.removeItem(SESSION_KEY); },
     updateUser(next: CurrentUser) { setUser(next); localStorage.setItem(SESSION_KEY, JSON.stringify(next)); },
@@ -45,7 +49,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try { await apiRequest(`/puzzles/${id}/favorite`, { method: add ? "POST" : "DELETE" }, user.id); }
       catch { setFavorites((previous) => { const next = new Set(previous); add ? next.delete(id) : next.add(id); return next; }); }
     },
-  }), [favorites, user]);
+  }), [authReady, favorites, user]);
 
   function completeLogin(nextUser: CurrentUser) {
     setUser(nextUser);
