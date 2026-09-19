@@ -1,0 +1,2 @@
+import { GET as getPuzzles } from "../../puzzles/route";
+export async function GET(request: Request, context: { params: Promise<{ type: string }> }) { const { type } = await context.params; if (!["popular", "featured", "new"].includes(type)) return Response.json({ error: { code: "NOT_FOUND", message: "集合不存在", retryable: false }, requestId: crypto.randomUUID() }, { status: 404 }); const url = new URL(request.url); if (type === "popular") url.searchParams.set("sort", "popular"); return getPuzzles(new Request(url, request)); }
