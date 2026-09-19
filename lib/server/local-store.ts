@@ -22,7 +22,8 @@ const curatedPuzzles = Array.from({ length: 24 }, (_, index) => {
   return [`puzzle-${number}`, seedPuzzle(`puzzle-${number}`, title, category, slug, imageUrl, gridSize, gridSize, cowboy?.aspectRatio)] as const;
 });
 
-export const store = {
+function createStore() {
+  return {
   profiles: new Map<string, Profile>(),
   puzzles: new Map<string, Puzzle>(curatedPuzzles),
   sessions: new Map<string, Session>(),
@@ -45,7 +46,16 @@ export const store = {
   roomMembers: new Map<string, RoomMember[]>(),
   pieceLocks: new Map<string, PieceLock>(),
   roomEvents: new Map<string, RoomEvent[]>(),
-};
+  };
+}
+
+type LocalStore = ReturnType<typeof createStore>;
+const globalStore = globalThis as typeof globalThis & { __jigsawTimeStore?: LocalStore };
+
+// Next.js may evaluate different route handlers in separate server bundles during
+// local development. Keep one shared store on globalThis so a puzzle created by
+// one handler is immediately visible to the detail and session handlers.
+export const store = globalStore.__jigsawTimeStore ??= createStore();
 
 /** x-user-id is deliberately disabled as soon as production Supabase config exists. */
 export function getUser(request: Request) { return supabaseConfigFromEnv() ? null : request.headers.get("x-user-id"); }
